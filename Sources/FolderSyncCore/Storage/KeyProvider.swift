@@ -77,13 +77,13 @@ public struct KeychainKeyProvider: KeyProvider {
 public final class PreferredKeyProvider: KeyProvider, @unchecked Sendable {
     public enum Source: String, Sendable { case keychain, localFile }
     public private(set) var source: Source = .keychain
-    let keychain: KeychainKeyProvider
+    let keychain: any KeyProvider
     let fileURL: URL
     let allowCreatingFallback: Bool
 
     /// `allowCreatingFallback` must be false once a store exists: a transient Keychain failure
     /// must never cause a new key to be generated for an existing store.
-    public init(keychain: KeychainKeyProvider = KeychainKeyProvider(), fallbackFile: URL, allowCreatingFallback: Bool) {
+    public init(keychain: any KeyProvider = KeychainKeyProvider(), fallbackFile: URL, allowCreatingFallback: Bool) {
         self.keychain = keychain
         fileURL = fallbackFile
         self.allowCreatingFallback = allowCreatingFallback
@@ -102,12 +102,20 @@ public final class PreferredKeyProvider: KeyProvider, @unchecked Sendable {
             guard allowCreatingFallback else { throw error }
             source = .localFile
             let key = SymmetricKey(size: .bits256)
-            let data = key.withUnsafeBytes { Data($0) }
-            let oldMask = umask(0o077)
-            defer { umask(oldMask) }
-            try data.write(to: fileURL, options: [.atomic, .withoutOverwriting])
-            chmod(fileURL.path, 0o600)
+            try key.withUnsafeBytes { try writeKeyFile($0) }
             return key
         }
+    }
+
+    /// Creates the key file exclusively with mode 0600 and flushes it to disk. A leftover file that
+    /// is not a valid key (e.g. cut short by a crash) can only exist while no store uses it yet.
+    private func writeKeyFile(_ bytes: UnsafeRawBufferPointer) throws {
+        let path = fileURL.path
+        if unlink(path) != 0, errno != ENOENT { throw posixFail("unlink", path) }
+        let fd = open(path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)
+        guard fd >= 0 else { throw posixFail("open", path) }
+        defer { close(fd) }
+        try writeFully(fd, bytes.baseAddress!, bytes.count, path)
+        try fullSync(fd, path)
     }
 }

@@ -27,7 +27,10 @@ targets:
   FolderSync:
     type: application
     platform: macOS
-    sources: [Sources/FolderSyncApp]
+    sources:
+      - Sources/FolderSyncApp
+      - path: Resources/AppIcon.icns
+        buildPhase: resources
     dependencies:
       - target: FolderSyncCore
     info:

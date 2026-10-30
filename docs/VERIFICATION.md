@@ -7,7 +7,7 @@ All tests use synthetic data in fresh folders under the system temporary directo
 refuses to run outside it (`Fixture.init` precondition), and "Move to Trash" is redirected to a
 fixture folder, so the real Trash is never touched.
 
-Last run: 78 tests in 11 suites, all passing (Swift 6.4, macOS 27.0.1, Apple Silicon, Command Line Tools only).
+Last run: 82 tests in 12 suites, all passing (Swift 6.4, macOS 27.0.1, Apple Silicon, Command Line Tools only).
 
 | Requirement | Test(s) |
 |---|---|
@@ -47,16 +47,20 @@ Last run: 78 tests in 11 suites, all passing (Swift 6.4, macOS 27.0.1, Apple Sil
 | No sockets opened during sync | `synchronizationOpensNoNetworkSockets` (`lsof` on the test process) |
 | No file contents in DB, WAL, backups, store or logs | `metadataDatabaseNeverContainsFileContents`, `contentIsEncryptedAtRestAndDeduplicated` |
 | Private storage permissions (0600 / 0700 / 0400) | `storeFilesAreOwnerOnly` |
+| Key file fallback when the Keychain refuses access (0600, reused, never regenerated for an existing store) | `createsPrivateKeyFileAndReusesIt`, `refusesToCreateKeyForExistingStore`, `replacesTruncatedKeyFileForNewStore`, `storageOpensWithFallbackKey` |
 | Performance: 2,000-file initial sync and incremental re-sync | `manyFilesInitialAndIncrementalSync` (asserts incremental is faster and re-hashes ≤ 1 file) |
 
 ## Verified manually
 
 * UI rendering of all sections against synthetic demo data (`DemoSeeder` plus the `FOLDERSYNC_UI_SNAPSHOT_DIR` hook): the graph lanes, edges, node colors, details panel and archive table were reviewed.
-* `scripts/build-app.sh` produces a bundle whose signature verifies, with exactly the three sandbox entitlements.
+* `scripts/build-app.sh` produces a universal (arm64 + x86_64) bundle whose signature verifies, with exactly the three sandbox entitlements.
+* `scripts/make-dmg.sh` produces a DMG that passes `hdiutil verify` and contains the app plus an Applications link. The app was installed from the DMG and launched: it stayed running and created its encrypted store in the sandbox container. On that Mac the Keychain prompt was cancelled, so the run used the key-file fallback. That first launch found a crash in the fallback (an invalid write option), now fixed and covered by the key fallback tests.
 
 ## Not yet verified
 
-* Launching the **sandboxed** bundle end to end: bookmark persistence across relaunch, Keychain key creation, notifications and the `SMAppService` login item.
+* In the sandboxed bundle: bookmark persistence across relaunch, creating a new Keychain item (the normal path), notifications and the `SMAppService` login item.
+* The GitHub Actions workflow (`.github/workflows/build.yml`): it runs on GitHub's macOS runners and has not run yet.
+* Opening a downloaded (quarantined) copy: the app is not notarized, so Gatekeeper rejects it until the user clicks Open Anyway (`spctl` reports `rejected`, as expected).
 * Real Trash behavior on external, network or non-APFS volumes.
 * Behavior on HFS+, exFAT and SMB destinations (e.g. timestamp granularity).
 * Scale beyond about 2,000 files and long histories; the UI pages history 300 commits at a time but has not been profiled with tens of thousands of commits.

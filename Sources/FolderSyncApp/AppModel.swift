@@ -113,7 +113,10 @@ final class AppModel: ObservableObject {
             let root = FolderSyncStorage.defaultRoot
             let storeExists = FileManager.default.fileExists(atPath: root.appendingPathComponent("store/store.json").path)
             try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-            let keys = PreferredKeyProvider(fallbackFile: root.appendingPathComponent("store-key.bin"), allowCreatingFallback: !storeExists)
+            // Development runs (`swift run`, UI snapshots) get their own Keychain item, so they can
+            // never claim the installed app's key or leave one it is not allowed to read.
+            let keychain = AppModel.isBundled ? KeychainKeyProvider() : KeychainKeyProvider(service: "FolderSync Version Store (development)")
+            let keys = PreferredKeyProvider(keychain: keychain, fallbackFile: root.appendingPathComponent("store-key.bin"), allowCreatingFallback: !storeExists)
             let storage = try FolderSyncStorage(root: root, keyProvider: keys)
             self.storage = storage
             keySource = keys.source
@@ -125,7 +128,13 @@ final class AppModel: ObservableObject {
             storage = nil
             service = nil
             keySource = nil
-            startupError = "FolderSync could not open its private storage: \(error)"
+            if let keychain = error as? KeychainError, keychain.status == errSecUserCanceled || keychain.status == errSecAuthFailed {
+                // Expected after an update of an app that is not signed by a registered developer:
+                // macOS asks again whether the new version may read the existing key.
+                startupError = "FolderSync needs its encryption key from your Keychain to open its version history. Quit and reopen FolderSync, and choose “Always Allow” when macOS asks. Nothing was changed in your folders."
+            } else {
+                startupError = "FolderSync could not open its private storage: \(error)"
+            }
         }
         reload()
         selectedPairID = pairs.first?.id
