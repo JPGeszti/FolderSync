@@ -1,0 +1,63 @@
+# XcodeGen spec — generates FolderSync.xcodeproj when full Xcode is installed:
+#   brew install xcodegen && xcodegen generate && open FolderSync.xcodeproj
+# The generated project is not committed; Package.swift + scripts/build-app.sh are the
+# primary, verified build path (they work with the Command Line Tools alone).
+name: FolderSync
+options:
+  bundleIdPrefix: app.foldersync
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    ENABLE_HARDENED_RUNTIME: YES
+    DEAD_CODE_STRIPPING: YES
+targets:
+  FolderSyncCore:
+    type: framework
+    platform: macOS
+    sources: [Sources/FolderSyncCore]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.foldersync.FolderSyncCore
+        GENERATE_INFOPLIST_FILE: YES
+        OTHER_LDFLAGS: ["-lsqlite3"]
+  FolderSync:
+    type: application
+    platform: macOS
+    sources: [Sources/FolderSyncApp]
+    dependencies:
+      - target: FolderSyncCore
+    info:
+      path: Resources/Info.plist
+    entitlements:
+      path: Resources/FolderSync.entitlements
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.foldersync.FolderSync
+        PRODUCT_NAME: FolderSync
+        CODE_SIGN_ENTITLEMENTS: Resources/FolderSync.entitlements
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_APP_SANDBOX: YES
+        ENABLE_USER_SELECTED_FILES: readwrite
+        ENABLE_OUTGOING_NETWORK_CONNECTIONS: NO
+        ENABLE_INCOMING_NETWORK_CONNECTIONS: NO
+  FolderSyncCoreTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources: [Tests/FolderSyncCoreTests]
+    dependencies:
+      - target: FolderSyncCore
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  FolderSync:
+    build:
+      targets:
+        FolderSync: all
+        FolderSyncCoreTests: [test]
+    test:
+      targets: [FolderSyncCoreTests]
