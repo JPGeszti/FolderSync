@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  FolderSync entitlements — deliberately minimal and auditable.
+  * App Sandbox ON.
+  * Access only to folders the user picks (open panel / drag & drop), persisted via app-scoped bookmarks.
+  * NO network client/server entitlement: the kernel sandbox denies all sockets.
+  * No temporary exceptions, no Full Disk Access, no Downloads/Pictures/etc. access.
+-->
+<dict>
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<key>com.apple.security.files.user-selected.read-write</key>
+	<true/>
+	<key>com.apple.security.files.bookmarks.app-scope</key>
+	<true/>
+</dict>
+</plist>
