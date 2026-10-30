@@ -82,6 +82,60 @@ struct ObjectStoreTests {
     }
 }
 
+/// Stands in for a Keychain that refuses access (denied prompt, missing entitlement, locked keychain).
+struct FailingKeyProvider: KeyProvider {
+    func loadOrCreateKey() throws -> SymmetricKey { throw KeychainError(status: errSecAuthFailed) }
+}
+
+@Suite("Key file fallback when the Keychain is unavailable")
+struct KeyFallbackTests {
+    @Test func createsPrivateKeyFileAndReusesIt() throws {
+        let f = try Fixture()
+        let file = f.base.appendingPathComponent("store-key.bin")
+        let first = PreferredKeyProvider(keychain: FailingKeyProvider(), fallbackFile: file, allowCreatingFallback: true)
+        let key = try first.loadOrCreateKey()
+        #expect(first.source == .localFile)
+
+        var st = stat()
+        #expect(lstat(file.path, &st) == 0)
+        #expect(st.st_mode & 0o777 == 0o600)
+        #expect(st.st_size == 32)
+
+        // Once the store exists the file is reused and never regenerated.
+        let again = PreferredKeyProvider(keychain: FailingKeyProvider(), fallbackFile: file, allowCreatingFallback: false)
+        #expect(try again.loadOrCreateKey() == key)
+        #expect(again.source == .localFile)
+    }
+
+    @Test func refusesToCreateKeyForExistingStore() throws {
+        let f = try Fixture()
+        let file = f.base.appendingPathComponent("store-key.bin")
+        let keys = PreferredKeyProvider(keychain: FailingKeyProvider(), fallbackFile: file, allowCreatingFallback: false)
+        #expect(throws: KeychainError.self) { try keys.loadOrCreateKey() }
+        #expect(!FileManager.default.fileExists(atPath: file.path))
+    }
+
+    @Test func replacesTruncatedKeyFileForNewStore() throws {
+        let f = try Fixture()
+        let file = f.base.appendingPathComponent("store-key.bin")
+        try Data([1, 2, 3]).write(to: file)
+        let keys = PreferredKeyProvider(keychain: FailingKeyProvider(), fallbackFile: file, allowCreatingFallback: true)
+        _ = try keys.loadOrCreateKey()
+        #expect(try Data(contentsOf: file).count == 32)
+    }
+
+    @Test func storageOpensWithFallbackKey() throws {
+        let f = try Fixture()
+        let root = f.base.appendingPathComponent("fallback-root")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let file = root.appendingPathComponent("store-key.bin")
+        _ = try FolderSyncStorage(root: root, keyProvider: PreferredKeyProvider(keychain: FailingKeyProvider(), fallbackFile: file, allowCreatingFallback: true),
+                                  trash: DirectoryTrash(directory: f.trashDir))
+        _ = try FolderSyncStorage(root: root, keyProvider: PreferredKeyProvider(keychain: FailingKeyProvider(), fallbackFile: file, allowCreatingFallback: false),
+                                  trash: DirectoryTrash(directory: f.trashDir))
+    }
+}
+
 @Suite("Crash recovery and history integrity")
 struct RecoveryTests {
     @Test func crashBeforePublishRollsBack() throws {
